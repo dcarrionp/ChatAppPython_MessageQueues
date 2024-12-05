@@ -168,8 +168,10 @@ class Servidor:
                         self.clientes.remove(old_conn)
                         old_conn.close()
                         self.usuarios_activos[username] = conn
+                        self.log_message(f"{username} se ha reconectado.", "system")
                     else:
                         self.usuarios_activos[username] = conn
+                        self.log_message(f"{username} se ha conectado.", "system")
 
                     self.clientes.append(conn)
                     self.enviar_historial(conn)
