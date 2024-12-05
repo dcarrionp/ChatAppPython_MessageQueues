@@ -111,6 +111,10 @@ class Cliente:
                 self.sock.connect((self.host, self.port))
                 threading.Thread(target=self.msg_recv, daemon=True).start()
                 self.log_message("Conexión exitosa con el servidor.", "system")
+                # Enviar el nombre de usuario al servidor
+                full_msg = f"{self.username}: se ha conectado."
+                encrypted_msg = pickle.dumps(self.cipher.encrypt(full_msg.encode()))
+                self.sock.send(encrypted_msg)
                 return  # Exit the method if the connection is successful
             except Exception as e:
                 self.log_message(f"Intento {attempt} de {attempts} fallido: No se pudo conectar al servidor.", "system")
@@ -150,6 +154,11 @@ class Cliente:
                 if data:
                     encrypted_message = pickle.loads(data)
                     message = self.cipher.decrypt(encrypted_message).decode()
+                    if "Error:" in message:
+                        messagebox.showerror("Error", message)
+                        self.sock.close()
+                        self.root.destroy()
+                        break
                     self.display_message(message, 'received')
             except socket.error:
                 self.log_message("Conexión perdida. Intentando reconectar...")
@@ -169,7 +178,7 @@ class Cliente:
 
     def on_closing(self):
         try:
-            self.sock.send(pickle.dumps(self.cipher.encrypt("Un cliente se ha desconectado.".encode())))
+            self.sock.send(pickle.dumps(self.cipher.encrypt(f"{self.username} se ha desconectado.".encode())))
         finally:
             self.sock.close()
             self.root.destroy()

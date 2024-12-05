@@ -15,6 +15,7 @@ class Servidor:
         self.host = host
         self.port = port
         self.clientes = []
+        self.usuarios_activos = {}
         self.key = Fernet.generate_key()
         self.cipher = Fernet(self.key)
         self.mensajes_historicos = self.cargar_mensajes()
@@ -141,6 +142,7 @@ class Servidor:
             self.start_button.config(state='normal')
             self.stop_button.config(state='disabled')
             self.clientes = []
+            self.usuarios_activos.clear()
 
     def on_closing(self):
         self.stop_server()
@@ -151,9 +153,26 @@ class Servidor:
             try:
                 conn, addr = self.sock.accept()
                 conn.setblocking(False)
-                self.clientes.append(conn)
                 self.log_message(f"Conexión aceptada desde {addr}", "default")
-                self.enviar_historial(conn)
+
+                # Recibir el nombre de usuario
+                data = conn.recv(1024)
+                if data:
+                    decrypted_msg = self.cipher.decrypt(pickle.loads(data))
+                    mensaje_texto = decrypted_msg.decode()
+                    username = mensaje_texto.split(":")[0].strip()
+
+                    if username in self.usuarios_activos:
+                        # Actualizar la conexión del usuario
+                        old_conn = self.usuarios_activos[username]
+                        self.clientes.remove(old_conn)
+                        old_conn.close()
+                        self.usuarios_activos[username] = conn
+                    else:
+                        self.usuarios_activos[username] = conn
+
+                    self.clientes.append(conn)
+                    self.enviar_historial(conn)
             except socket.error:
                 pass
 
@@ -175,14 +194,24 @@ class Servidor:
                     to_remove.append(c)
             for c in to_remove:
                 self.clientes.remove(c)
+                username = self.get_username_from_socket(c)
+                if username:
+                    del self.usuarios_activos[username]
 
     def msg_to_all(self, msg, cliente):
-        for c in self.clientes:
-            if c != cliente:
+        for username, conn in self.usuarios_activos.items():
+            if conn != cliente:
                 try:
-                    c.send(msg)
+                    conn.send(msg)
                 except:
-                    self.clientes.remove(c)
+                    self.clientes.remove(conn)
+                    del self.usuarios_activos[username]
+
+    def get_username_from_socket(self, sock):
+        for username, conn in self.usuarios_activos.items():
+            if conn == sock:
+                return username
+        return None
 
     def enviar_historial(self, conn):
         for mensaje in self.mensajes_historicos:
@@ -196,7 +225,6 @@ class Servidor:
     def launch_client(self):
         client_window = Toplevel(self.window)
         Cliente(host="localhost", port=4000, master=client_window)
-
 
 if __name__ == "__main__":
     Servidor()
